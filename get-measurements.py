@@ -134,6 +134,11 @@ def main():
              tracetxt = MeasurementPrint.trace2txt( data )
          else:
              continue
+         if 'dst_name' in data:
+             dst_name = data['dst_name']
+         else:
+             dst_name = None
+             continue
          src_prb_id = data['prb_id']
          src_prb = probes_by_id[ src_prb_id ]
          src_asn = None
@@ -143,17 +148,20 @@ def main():
             src_asn = src_prb['asn_v6']
          dst_prb_id = None
          dst_prb = None
-         try:
-            dst_prb_id = probes_by_ip[ data['dst_name'] ] # dst name always has the IP that is in msmset/probeset
-            dst_prb = probes_by_id[  dst_prb_id ]
-         except:
-            ### 2a01:7700:0:1033:220:4aff:fee0:2694 vs. 2a01:7700::1033:220:4aff:fee0:2694
-            ##AAAAAAAAAAA
-            print >>sys.stderr, "can't find dst_prb_id for this dst_name. SHOULD NOT HAPPEN"
-         if src_prb_id == dst_prb_id:
-            ### probe to itself is not interesting/useful
-            ## TODO filter this out in the measurement creation
-            continue
+         for mtype in basedata['measurement-types']:
+            if mtype == 'probe-mesh':
+               try:
+                  dst_prb_id = probes_by_ip[ data['dst_name'] ] # dst name always has the IP that is in msmset/probeset
+                  print >>sys.stderr, dst_name, dst_prb_id
+                  dst_prb = probes_by_id[  dst_prb_id ]
+               except:
+                  ### 2a01:7700:0:1033:220:4aff:fee0:2694 vs. 2a01:7700::1033:220:4aff:fee0:2694
+                  ##AAAAAAAAAAA
+                  print >>sys.stderr, "can't find dst_prb_id for this dst_name. SHOULD NOT HAPPEN"
+               if src_prb_id == dst_prb_id:
+                  ### probe to itself is not interesting/useful
+                  ## TODO filter this out in the measurement creation
+                  continue
          ixps = check_if_via_ixp( tr, ixp_radix ) 
          via_ixp = False
          if len(ixps) > 0: via_ixp = True
@@ -175,6 +183,7 @@ def main():
             'as_links': as_links,
             'src_prb_id': src_prb_id,
             'dst_prb_id': dst_prb_id,
+            'dst_name': dst_name,
             #'src_asn': src_asn,
             #'dst_asn': dst_asn,
             #'last_rtt': tr.last_rtt,

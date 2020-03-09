@@ -158,10 +158,11 @@ def main():
                   ### 2a01:7700:0:1033:220:4aff:fee0:2694 vs. 2a01:7700::1033:220:4aff:fee0:2694
                   ##AAAAAAAAAAA
                   print >>sys.stderr, "can't find dst_prb_id for this dst_name. SHOULD NOT HAPPEN"
-               if src_prb_id == dst_prb_id:
-                  ### probe to itself is not interesting/useful
-                  ## TODO filter this out in the measurement creation
-                  continue
+         if src_prb_id == dst_prb_id:
+            ### probe to itself is not interesting/useful
+            ## TODO filter this out in the measurement creation
+            print >>sys.stderr, "src = dst"
+            continue
          ixps = check_if_via_ixp( tr, ixp_radix ) 
          via_ixp = False
          if len(ixps) > 0: via_ixp = True

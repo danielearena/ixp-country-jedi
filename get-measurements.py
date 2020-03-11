@@ -161,7 +161,7 @@ def main():
          if src_prb_id == dst_prb_id:
             ### probe to itself is not interesting/useful
             ## TODO filter this out in the measurement creation
-            print >>sys.stderr, "src = dst"
+            #print >>sys.stderr, "src = dst"
             continue
          ixps = check_if_via_ixp( tr, ixp_radix ) 
          via_ixp = False

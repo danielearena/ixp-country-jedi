@@ -46,6 +46,24 @@ function jedi_cell_show_source_dest_asn( proto, src_as , dst_as , source_asn, de
               
 }
 
+// Display the source ASN and destination site of each cell (for traces to external sites)
+function jedi_cell_show_source_asn_dest_site( proto, src_as , dst_website , source_asn, dest_site, pageX, pageY) {
+
+
+        source_asn.style("display", "block");  //The tooltip appears
+        dest_site.style("display", "block");  //The tooltip appears
+
+        source_asn.html( "Source ASN: <b>" + src_as + '</b></br><small>' + hoverGetData(src_as) + "</small> "  )
+        .style("left", pageX - 270 + "px")
+        .style("top", pageY - 15 + "px");
+
+        dest_site.html( "Destination: <b>" + dst_website +"</b>"  )
+        .style("left", pageX - 110 + "px")
+        .style("top", pageY - 70 + "px");
+
+}
+
+
 
 var cachedData = Array();
 

@@ -1,8 +1,10 @@
 
 //Global Variables
-var rows, cols, cells, row_count, col_count, row_by_idx, data_n, proto, uniq_asns = [], filter_ASNs, _6to4;
+var rows, cols, cells, row_count, col_count, row_by_idx, col_by_idx, data_n, proto, uniq_asns = [], filter_ASNs, _6to4, mtype;
 
-var rows_f = [], cols_f = [], row_count_f, col_count_f, row_by_idx_f, ids_of_rows = [], ids_of_cols = [], cells_f = [];
+var rows_f = [], cols_f = [], row_count_f, col_count_f, row_by_idx_f, col_by_idx_f, ids_of_rows = [], ids_of_cols = [], cells_f = [], col_dsts = [];
+
+var grid = [];
 
 // BEGIN CODE FOR SHARE LINK
 
@@ -110,7 +112,7 @@ function start_processing(){
         return a - b;
     }
     tmp_6to4 = []
-    if(proto == 'v4'){ 
+    if(proto == 'v4'){
         for (i in rows){
             if (!(uniq_asns.includes(Number(rows[i].asn_v4)))){
                 uniq_asns.push(rows[i].asn_v4);
@@ -218,6 +220,7 @@ function initVariables(){
     cols_f = []
     ids_of_rows = []
     ids_of_cols = []
+    col_dsts = []
     cells_f = []
     row_count_f = []
 }
@@ -227,6 +230,7 @@ function isInArray(value, array) {
 }
 
 function redraw(){
+
     if(proto == 'v4'){
         for (i in data_n['rows']){
             if( isInArray( (data_n['rows'][i].asn_v4).toString(),filter_ASNs)) {
@@ -234,11 +238,11 @@ function redraw(){
                 rows_f.push(data_n['rows'][i])
                 ids_of_rows.push(data_n['rows'][i].id)
             }
-            if( isInArray( (data_n['cols'][i].asn_v4).toString(),filter_ASNs)) {
-
-                cols_f.push(data_n['cols'][i])
-                ids_of_cols.push(data_n['cols'][i].id)
-            }
+        }
+        for (i in data_n['cols']){
+            cols_f.push(data_n['cols'][i])
+            ids_of_cols.push(data_n['cols'][i].id)
+            col_dsts.push(data_n['cols'][i].dst)
         }
     }else{
         for (i in data_n['rows']){
@@ -257,7 +261,8 @@ function redraw(){
                     ids_of_rows.push(data_n['rows'][i].id)
                 }
             }
-
+        }
+        for (i in data_n['cols']){
             if (data_n['cols'][i].asn_v6 == null && _6to4.includes(data_n['cols'][i].id)){
 
                 tmp_str = '6to4' +  ' (v4: AS' + data_n['cols'][i].asn_v4 + ')'
@@ -267,9 +272,10 @@ function redraw(){
                 }
 
             }else{
-                if( isInArray( (data_n['cols'][i].asn_v6).toString(),filter_ASNs)) {
+                if( mtype == "http-traceroute" || isInArray( (data_n['cols'][i].asn_v6).toString(),filter_ASNs)) {
                     cols_f.push(data_n['cols'][i])
                     ids_of_cols.push(data_n['cols'][i].id)
+                    col_dsts.push(data_n['cols'][i].dst)
                 }
             }
         }
@@ -283,13 +289,14 @@ function redraw(){
     }
     row_count_f = rows_f.length;
     col_count_f = cols_f.length;
-    row_by_idx_f = _.indexBy(rows_f, 'id'); 
+    row_by_idx_f = _.indexBy(rows_f, 'id');
+    col_by_idx_f = _.indexBy(cols_f, 'id');
 
     //Delete previous visualization matrix
     d3.select("svg").remove();
 
     if(row_count_f > 0){
-        plot_vizualization(rows_f, cols_f, cells_f, row_count_f, col_count_f, row_by_idx_f, data_n['pct']);
+        plot_vizualization(rows_f, cols_f, cells_f, row_count_f, col_count_f, row_by_idx_f, col_by_idx_f, data_n['pct']);
     }
 
 }
@@ -345,9 +352,11 @@ d3.json("rttmesh.{0}.json".format( proto ), function(error,data) {
     cells = data['cells'];
     row_count = rows.length;
     col_count = cols.length;
-    row_by_idx = _.indexBy(rows, 'id'); 
+    row_by_idx = _.indexBy(rows, 'id');
+    col_by_idx = _.indexBy(cols, 'id');
     data_n = data;
-    _6to4 = data['_6to4']
+    _6to4 = data['_6to4'];
+    mtype = data['mtype'];
 
     start_processing();
 });
@@ -375,7 +384,7 @@ window.onresize = function() {
 };
 
   
-function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx, pct) {
+function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx, col_by_idx, pct) {
 
     var height = 1200;
     var width = height;
@@ -401,8 +410,29 @@ function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx,
 
     var map = svg.append("g");
     
+    var cellwidth, cellheight, median_rtt = 0;
+
+    cellwidth = Math.floor(( width - border_width) / col_count);
+    cellheight = Math.ceil(( height - border_width) / row_count );
+
+    for (i in data_n['cells']){
+        grid[i] = {};
+	grid[i].id = i;
+	grid[i].probeid = data_n['cells'][i].row;
+        if (mtype == 'probe-mesh'){
+            grid[i].dst = data_n['cells'][i].col;
+            grid[i].col = ids_of_cols.indexOf(grid[i].dst) * cellwidth;
+	} else {
+	    grid[i].dst = data_n['cells'][i].dst_name;
+            grid[i].col = col_dsts.indexOf(grid[i].dst) * cellwidth;
+	};
+        grid[i].row = ids_of_rows.indexOf(grid[i].probeid) * cellheight;
+        grid[i].data = data_n['cells'][i].data;
+        grid[i].median_rtt = get_median(data_n['cells'][i].data.dst_rtts);
+    }
+
     function zoomed(){
-        map.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");  
+        map.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
     }
 
 
@@ -416,13 +446,20 @@ function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx,
     var probe_info;
     var count = 0
 
-    var sort_orders = {
-         'id':     _.pluck( rows.sort( function(a,b) { return d3.ascending( a.id, b.id ) } ), 'id'),
-         'asn_v4': _.pluck( rows.sort( function(a,b) { return d3.ascending( a.asn_v4, b.asn_v4 ) } ), 'id'),
-         'asn_v6': _.pluck( rows.sort( function(a,b) { return d3.ascending( a.asn_v6, b.asn_v6 ) } ), 'id')
+// TODO - Sorting by AS doesn't work - it only sorts the axes, but the cells inside do not correspond
+//    var sort_row_orders = {
+//         'id':     _.pluck( rows.sort( function(a,b) { return d3.ascending( a.id, b.id ) } ), 'id'),
+//         'asn_v4': _.pluck( rows.sort( function(a,b) { return d3.ascending( a.asn_v4, b.asn_v4 ) } ), 'id'),
+//         'asn_v6': _.pluck( rows.sort( function(a,b) { return d3.ascending( a.asn_v6, b.asn_v6 ) } ), 'id')
+//        };
+
+    var sort_row_orders = {
+         'id':     _.pluck( rows, 'id'),
+         'asn_v4': _.pluck( rows, 'id'),
+         'asn_v6': _.pluck( rows, 'id')
         };
 
-    function get_label(proto, index, prefix){
+    function get_row_label(proto, index, prefix){
 
         if(proto == 'v4'){
             if(row_by_idx[index].asn_v6 != row_by_idx[index].asn_v4 && row_by_idx[index].asn_v6 != null){
@@ -437,35 +474,50 @@ function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx,
             }else if(row_by_idx[index].asn_v6 != row_by_idx[index].asn_v4){
                 return prefix + row_by_idx[index].asn_v6 + ' (v4: ' + prefix + row_by_idx[index].asn_v4 +')'
             }else{
-                return prefix + row_by_idx[ index ].asn_v6 
+                return prefix + row_by_idx[ index ].asn_v6
             }
         }
     }
 
     if(proto == 'v4'){
-        xScale.domain( sort_orders.asn_v4 )
-        yScale.domain( sort_orders.asn_v4 )
+	if (mtype == 'probe-mesh'){
+            xScale.domain( sort_row_orders.asn_v4 )
+	}else{
+            xScale.domain( col_dsts )
+	}
+	yScale.domain( sort_row_orders.asn_v4 )
 
         xAxis = d3.svg.axis().scale(xScale).orient("top").tickSize(2);
         yAxis = d3.svg.axis().scale(yScale).orient("left").tickSize(2);
-        xAxis.tickFormat(function(d) { 
-            return get_label(proto, d, 'AS');
-        });
-        yAxis.tickFormat(function(d) { 
-            return get_label(proto, d, 'AS');
+	if (mtype == 'probe-mesh'){
+	    xAxis.tickFormat(function(d) {
+		return get_row_label(proto, d, 'AS');
+	    });
+	}else{
+            xAxis.tickValues( col_dsts );
+	}
+	yAxis.tickFormat(function(d) {
+            return get_row_label(proto, d, 'AS');
         });
     }else{
-        xScale.domain( sort_orders.asn_v6 )
-        yScale.domain( sort_orders.asn_v6 )
+	if (mtype == 'probe-mesh'){
+            xScale.domain( sort_row_orders.asn_v6 )
+	}else{
+            xScale.domain( col_dsts )
+	}
+        yScale.domain( sort_row_orders.asn_v6 )
 
         xAxis = d3.svg.axis().scale(xScale).orient("top").tickSize(2);
         yAxis = d3.svg.axis().scale(yScale).orient("left").tickSize(2);
-
-        xAxis.tickFormat(function(d) { 
-            return get_label(proto, d, 'AS');
-        });
-        yAxis.tickFormat(function(d) { 
-            return get_label(proto, d, 'AS');
+	if (mtype == 'probe-mesh'){
+	    xAxis.tickFormat(function(d) {
+		return get_row_label(proto, d, 'AS');
+	    });
+	}else{
+            xAxis.tickValues( col_dsts );
+	}
+        yAxis.tickFormat(function(d) {
+            return get_row_label(proto, d, 'AS');
         });
     }
 
@@ -473,6 +525,8 @@ function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx,
     d3.select("#adjacencyG").append("g").attr("class",'axis').call(yAxis);
     document.getElementById("pct25").innerHTML = pct["25"];
     document.getElementById("pct75").innerHTML = pct["75"];
+
+
     /*
     function text_from_datacell( d ) {
         var txt = [];
@@ -485,7 +539,6 @@ function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx,
         return txt.join("\n");
     };
     */
-
     function cellcolor( d ) {
         console.log( d.data.dst_rtts );
         //min_rtt = Math.min(d.data.dst_rtts);
@@ -498,31 +551,54 @@ function plot_vizualization(rows, cols, cells, row_count, col_count, row_by_idx,
         else { return "grey"; } /* No RTT to destination or something went wrong */
     };
 
-    var boxes_viz = map.append('g')
-        .attr('class', 'boxes')
-        .selectAll('rect')
-        .data( cells )
-        .enter()
-        .append("rect")
-        .datum( function(d) { d.x = xScale( d.col ), d.y = yScale( d.row ) ; return d } )
-        .attr('x', function(d) { return d.x } )
-        .attr('y', function(d) { return d.y } )
-        .attr('width', Math.floor(( width - border_width) / col_count ) -1)
-        .attr('height', Math.ceil(( height - border_width) / col_count ) -1) 
-        .on('mouseover', function (d) { 
-            jedi_cell_show_source_dest_asn(proto, get_label(proto, d.row, ''), get_label(proto, d.col, '') , row_details,
-            col_details, d3.event.pageX, d3.event.pageY)
-         } )
-        .on('mouseout', function (d){
-            row_details.style("display", "none");
-            col_details.style("display", "none");
-        })
-        .on('click', function (d){
+    if (mtype == 'probe-mesh'){
+        var boxes_viz = map.append('g')
+            .attr('class', 'boxes')
+            .selectAll('rect')
+            .data(grid)
+            .enter()
+            .append("rect")
+            .attr('x', function(d) {return d.col})
+            .attr('y', function(d) {return d.row})
+            .attr('width', Math.floor(( width - border_width) / col_count ) -1)
+            .attr('height', Math.ceil(( height - border_width) / row_count ) -1)
+            .on('mouseover', function (d) {
+                jedi_cell_show_source_dest_asn(proto, get_row_label(proto, d.probeid, ''), get_row_label(proto, d.dst, '') ,
+                row_details, col_details, d3.event.pageX, d3.event.pageY)
+             } )
+            .on('mouseout', function (d){
+                row_details.style("display", "none");
+                col_details.style("display", "none");
+            })
+            .on('click', function (d){
+                jedi_cell_show_traceroute_on_click( proto, d.probeid, d.dst, traceroute_details, d3.event.pageX, d3.event.pageY)
+            })
+            .style("fill", cellcolor);
+    } else {
+        var boxes_viz = map.append('g')
+            .attr('class', 'boxes')
+            .selectAll('rect')
+            .data(grid)
+            .enter()
+            .append("rect")
+            .attr('x', function(d) {return d.col})
+            .attr('y', function(d) {return d.row})
+            .attr('width', Math.floor(( width - border_width) / col_count ) -1)
+            .attr('height', Math.ceil(( height - border_width) / row_count ) -1)
+            .on('mouseover', function (d) {
+                jedi_cell_show_source_asn_dest_site(proto, get_row_label(proto, d.probeid, ''), d.dst, row_details,
+                col_details, d3.event.pageX, d3.event.pageY)
+             } )
+            .on('mouseout', function (d){
+                row_details.style("display", "none");
+                col_details.style("display", "none");
+            })
+            .on('click', function (d){
+                jedi_cell_show_traceroute_on_click( proto, d.probeid, d.dst, traceroute_details, d3.event.pageX, d3.event.pageY)
+            })
+            .style("fill", cellcolor);
+    };
 
-            jedi_cell_show_traceroute_on_click( proto, d.row, d.col , traceroute_details, d3.event.pageX, d3.event.pageY)
-
-        })
-        .style('fill', cellcolor )
 }
 
 

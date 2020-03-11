@@ -65,6 +65,24 @@ def data_line_generator():
             else:
                print >>sys.stderr," error on msm entry: %s " % ( msm_entry )
 
+# Generate column list, for V4 and V6
+def dest_cols_generator():
+   infilename = 'measurementset.json'
+   proto = None
+   col_id = 0
+   ptx = 0
+   cols = { 'v4' : list(), 'v6' : list() }
+   print "Dest cols gen"
+   with open(infilename,'r') as infile:
+      msms = json.load( infile , encoding='utf-8')
+      for meas_proto in msms:
+         proto = meas_proto
+         for msm_entry in msms[meas_proto]:
+            col_id = col_id + 100
+            ptx = ptx + 100
+            cols[meas_proto].append({'id': col_id, 'ptx': ptx, 'dst': msm_entry['dst']})
+   return cols
+#   print >>sys.stderr, cols
 
 ### common . For stuff general enough to apply to multiple analyses.
 ### example is text representation for traces, indexed by srcprb.dstprb
@@ -72,7 +90,10 @@ def init_common( basedata, probes ):
   return {'v4': {}, 'v6': {}, 'timestamps': set() } 
 
 def do_common_entry( data, proto, data_entry ):
-   detail_key = '.'.join(map(str,[ data_entry['src_prb_id'] , data_entry['dst_prb_id'] ]))
+   if data_entry['dst_prb_id'] is None:
+      detail_key = '.'.join(map(str,[ data_entry['src_prb_id'] , data_entry['dst_name'] ]))
+   else:
+      detail_key = '.'.join(map(str,[ data_entry['src_prb_id'] , data_entry['dst_prb_id'] ]))
    if not detail_key in data[proto]:
       data[proto][detail_key] = []
    data[proto][detail_key].append( data_entry )
@@ -88,7 +109,7 @@ def do_common_printresult( data ):
       for detail_key in data[ proto ].keys():
          data_sorted = sorted( data[proto][detail_key], key=lambda x:x['ts'])
          data_latest = data_sorted[-1]
-         src_prb,dst_prb = detail_key.split('.')
+         src_prb,dst_prb = detail_key.split('.',1)
          ldir = "%s/%s/%s/%s" % ( COMMONPATH, proto, src_prb, dst_prb )
          if not os.path.exists( ldir ):
             os.makedirs( ldir )
@@ -421,28 +442,43 @@ def init_rttmesh( basedata, probes ):
         if(probe['address_v6'][:4] == '2002'):
           _6to4.append(probe['probe_id'])
 
-      if('address_v4' in probe and probe['address_v4'] != None and "system-ipv4-works" in probe['tags']):
+#      if('address_v4' in probe and probe['address_v4'] != None and "system-ipv4-works" in probe['tags']):
+      if('address_v4' in probe and probe['address_v4'] != None):
          rows['v4'].append({
             'id': probe['probe_id'],
             'asn_v4': probe['asn_v4'],
             'asn_v6': probe['asn_v6']
          })
 
-      if('address_v6' in probe and probe['address_v6'] != None and "system-ipv6-works" in probe['tags']):
+#      if('address_v6' in probe and probe['address_v6'] != None and "system-ipv6-works" in probe['tags']):
+      if('address_v6' in probe and probe['address_v6'] != None):
          rows['v6'].append({
             'id': probe['probe_id'],
             'asn_v4': probe['asn_v4'],
             'asn_v6': probe['asn_v6']
          })
 
+   for mtype in basedata['measurement-types']:
+      if mtype == 'probe-mesh':
+         measurement_type = mtype;
+         cols = rows;
+         continue
+      elif mtype == 'http-traceroute':
+         measurement_type = mtype;
+         cols = { 'v4' : list(), 'v6' : list(), }
+         cols = dest_cols_generator()
+         continue
+
+
    ## can do data reduction step here if data is too big
    d = {'summary':{},'details':{},'rttseries':{ 'v4':[], 'v6': [] } }
    for proto in ('v4','v6'):
       d['summary'][proto] = {
          'rows': rows[proto],
-         'cols': rows[proto],
+         'cols': cols[proto],
          'cells': [],
          '_6to4': _6to4,
+         'mtype': measurement_type,
          'pct': {} # holds the percentiles for plotting/axis
       }
       d['details'][proto] = {}
@@ -450,11 +486,18 @@ def init_rttmesh( basedata, probes ):
 
 def do_rttmesh_entry( rttmesh, proto, data ):
    my_cells = rttmesh['summary'][proto]['cells']
-   my_cells.append({
-      'row': data['src_prb_id'],
-      'col': data['dst_prb_id'],
-      'data': {'dst_rtts': data['dst_rtts']}
-   })
+   if data['dst_prb_id'] is None:
+      my_cells.append({
+         'row': data['src_prb_id'],
+         'dst_name': data['dst_name'],
+         'data': {'dst_rtts': data['dst_rtts']}
+      })
+   else:
+      my_cells.append({
+         'row': data['src_prb_id'],
+         'col': data['dst_prb_id'],
+         'data': {'dst_rtts': data['dst_rtts']}
+      })
    #rttseries for determining coloring of cells later
    if len( data['dst_rtts'] ) > 0:
        rttmesh['rttseries'][ proto ].append( min( data['dst_rtts'] ) )
@@ -944,20 +987,45 @@ def main():
    probes = None
    #with open("probeset.json") as inf:
    #   probes = json.load( inf )
-   defs={
-      'ixpcount': True,
-      'incountry': True,
-      'ixpcountry': True,
-      'rttmesh': True,
-      'cities': True,
-      'asgraph': True,
-      'geopath': True,
-      'ixplans': True,
-      'probetags': True,
-      'viaanchor': False, ## buggy
-      'perasn': True,
-      'eyeballasgraph': True
-   }
+   measurement_type = None
+   for mtype in basedata['measurement-types']:
+      if mtype == 'probe-mesh':
+         measurement_type = "probe-mesh"
+         continue
+      elif mtype == 'http-traceroute':
+         measurement_type = "http-traceroute"
+         continue
+   if measurement_type == "probe-mesh":
+      defs={
+         'ixpcount': True,
+         'incountry': True,
+         'ixpcountry': True,
+         'rttmesh': True,
+         'cities': True,
+         'asgraph': True,
+         'geopath': True,
+         'ixplans': True,
+         'probetags': True,
+         'viaanchor': False, ## buggy
+         'perasn': True,
+         'eyeballasgraph': True
+      }
+   else:
+      defs={
+         'ixpcount': False,
+         'incountry': False,
+         'ixpcountry': True,
+         'rttmesh': True,
+         'cities': False,
+         'asgraph': True,
+         'geopath': True,
+         'ixplans': False,
+         'probetags': False,
+         'viaanchor': False, ## buggy
+         'perasn': False,
+         'eyeballasgraph': False
+      }
+
    #defs={'eyeballasgraph': True}
 
    if len( sys.argv ) > 1:

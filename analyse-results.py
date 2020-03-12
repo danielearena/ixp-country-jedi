@@ -394,13 +394,25 @@ def init_ixpcountry( basedata, probes ):
             'asn_v6': probe['asn_v6']
          })
 
+   for mtype in basedata['measurement-types']:
+      if mtype == 'probe-mesh':
+         measurement_type = mtype;
+         cols = rows;
+         continue
+      elif mtype == 'http-traceroute':
+         measurement_type = mtype;
+         cols = { 'v4' : list(), 'v6' : list(), }
+         cols = dest_cols_generator()
+         continue
+
    ## can do data reduction step here if data is too big
    d = {'summary':{},'details':{}}
    for proto in ('v4','v6'):
       d['summary'][proto] = {
          'rows': rows[proto],
-         'cols': rows[proto],
+         'cols': cols[proto],
          'cells': [],
+         'mtype': measurement_type,
          '_6to4': _6to4,
       }
       d['details'][proto] = {}
@@ -408,11 +420,18 @@ def init_ixpcountry( basedata, probes ):
 
 def do_ixpcountry_entry( ixpcountry, proto, data ):
    my_cells = ixpcountry['summary'][proto]['cells']
-   my_cells.append({
-      'row': data['src_prb_id'],
-      'col': data['dst_prb_id'],
-      'data': {'in_country': data['in_country'], 'via_ixp': data['via_ixp']}
-   })
+   if data['dst_prb_id'] is None:
+      my_cells.append({
+         'row': data['src_prb_id'],
+         'dst_name': data['dst_name'],
+         'data': {'in_country': data['in_country'], 'via_ixp': data['via_ixp']}
+      })
+   else:
+      my_cells.append({
+         'row': data['src_prb_id'],
+         'col': data['dst_prb_id'],
+         'data': {'in_country': data['in_country'], 'via_ixp': data['via_ixp']}
+      })
    details = ixpcountry['details'][proto]
    detail_key = '.'.join(map(str,[ data['src_prb_id'] , data['dst_prb_id'] ]))
    details[ detail_key ] = data
